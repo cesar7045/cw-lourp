@@ -1,0 +1,7 @@
+"cwlourp"
+{
+	"base"			"Clockwork"
+	"title"			"Last of Us Roleplay"
+	"author"		"Cesar Carlos, The Hipster"
+	"description"		"A Last of Us roleplaying Schema."
+}
