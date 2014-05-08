@@ -21,9 +21,9 @@ Clockwork.option:SetKey("model_shipment", "models/items/item_item_crate.mdl");
 Clockwork.option:SetKey("name_cash", "Dollars");
 Clockwork.option:SetKey("model_cash", "models/props_lab/box01a.mdl");
 -- Need to make logo and music!
-Clockwork.option:SetKey("intro_image", "needlogo/needlogo");
-Clockwork.option:SetKey("schema_logo", "needlogo/needlogo");
-Clockwork.option:SetKey("menu_music", "music/needmusic.mp3");
+Clockwork.option:SetKey("intro_image", "lastofusrp/lourp_logo.png");
+Clockwork.option:SetKey("schema_logo", "lastofusrp/lourp_logo.png");
+Clockwork.option:SetKey("menu_music", "music/thelastofus.mp3");
 
 -- Asked to player when first joins.
 
