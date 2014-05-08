@@ -1,6 +1,6 @@
 
 local CLASS = Clockwork.class:New("U.S. Military");
-	CLASS.color = Color(50, 100, 150, 255);
+	CLASS.color = Color(51, 153, 51, 255);
 	CLASS.wages = 20;
 	CLASS.factions = {FACTION_USMILITARY};
 	CLASS.isDefault = true;
