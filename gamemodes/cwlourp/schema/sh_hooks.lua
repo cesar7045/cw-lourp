@@ -1,6 +1,8 @@
 
--- Called when the Clockwork shared variables are added.
 function Schema:ClockworkAddSharedVars(globalVars, playerVars)
-	playerVars:Number("ExampleNumber", true); -- The true means client only, not networked to everybody.
-	playerVars:String("ExampleString");
+playerVars:Number("antidepressants", true);
+playerVars:String("customClass");
+playerVars:Number("clothes", true);
+playerVars:Number("tied");
+globalVars:Number("PKMode");
 end;
