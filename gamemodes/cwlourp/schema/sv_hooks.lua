@@ -397,3 +397,353 @@ function Schema:PlayerHealed(player, healer, itemTable)
 end;
 
 -- Still need to add more
+
+-- Called when a player attempts to use a tool.
+function Schema:CanTool(player, trace, tool)
+	if (!Clockwork.player:HasFlags(player, "w")) then
+		if (string.sub(tool, 1, 5) == "wire_" or string.sub(tool, 1, 6) == "wire2_") then
+			player:RunCommand("gmod_toolmode \"\"");
+			
+			return false;
+		end;
+	end;
+end;
+
+-- Called when a player's shared variables should be set.
+function Schema:PlayerSetSharedVars(player, curTime)
+	player:SetSharedVar( "customClass", player:GetCharacterData("customclass", "") );
+	player:SetSharedVar( "clothes", player:GetCharacterData("clothes", 0) );
+	player:SetSharedVar( "icon", player:GetCharacterData("icon", "") );
+	
+	if (player:Alive() and !player:IsRagdolled() and player:GetVelocity():Length() > 0) then
+		local inventoryWeight = player:GetInventoryWeight();
+		
+		if (inventoryWeight >= player:GetMaxWeight() / 4) then
+			player:ProgressAttribute(ATB_STRENGTH, inventoryWeight / 400, true);
+		end;
+	end;
+end;
+
+-- Called when an entity is removed.
+function Schema:EntityRemoved(entity)
+	if (IsValid(entity) and entity:GetClass() == "prop_ragdoll") then
+		if (entity.areBelongings and entity.cwInventory and entity.cash) then
+			if (table.Count(entity.inventory) > 0 or entity.cash > 0) then
+				local belongings = ents.Create("cw_belongings");
+				
+				belongings:SetAngles( Angle(0, 0, -90) );
+				belongings:SetData(entity.cwInventory, entity.cash);
+				belongings:SetPos( entity:GetPos() + Vector(0, 0, 32) );
+				belongings:Spawn();
+				
+				entity.cwInventory = nil;
+				entity.cash = nil;
+			end;
+		end;
+	end;
+end;
+
+-- Called when the player attempts to be ragdolled.
+function Schema:PlayerCanRagdoll(player, state, delay, decay, ragdoll)
+	if (self.scanners[player]) then
+		return false;
+	end;
+end;
+
+-- Called at an interval while a player is connected.
+function Schema:PlayerThink(player, curTime, infoTable)
+	if (player:Alive() and !player:IsRagdolled()) then
+		if (!player:InVehicle() and player:GetMoveType() == MOVETYPE_WALK) then
+			if (player:IsInWorld()) then
+				if (!player:IsOnGround()) then
+					player:ProgressAttribute(ATB_ACROBATICS, 0.25, true);
+				elseif (infoTable.running) then
+					player:ProgressAttribute(ATB_AGILITY, 0.125, true);
+				elseif (infoTable.jogging) then
+					player:ProgressAttribute(ATB_AGILITY, 0.0625, true);
+				end;
+			end;
+		end;
+	end;
+	
+	if (Clockwork.player:HasAnyFlags(player, "vV")) then
+		if (infoTable.wages == 0) then
+			infoTable.wages = 20;
+		end;
+	end;
+	
+	if (self.scanners[player]) then
+		self:CalculateScannerThink(player, curTime);
+	end;
+	
+	local acrobatics = Clockwork.attributes:Fraction(player, ATB_ACROBATICS, 100, 50);
+	local strength = Clockwork.attributes:Fraction(player, ATB_STRENGTH, 8, 4);
+	local agility = Clockwork.attributes:Fraction(player, ATB_AGILITY, 50, 25);
+	
+	if (self:PlayerIsCombine(player)) then
+		infoTable.inventoryWeight = infoTable.inventoryWeight + 8;
+	end;
+	
+	if (clothes != "") then
+		local itemTable = Clockwork.item:FindByID(clothes);
+		
+		if (itemTable and itemTable.pocketSpace) then
+			infoTable.inventoryWeight = infoTable.inventoryWeight + itemTable.pocketSpace;
+		end;
+	end;
+	
+	infoTable.inventoryWeight = infoTable.inventoryWeight + strength;
+	infoTable.jumpPower = infoTable.jumpPower + acrobatics;
+	infoTable.runSpeed = infoTable.runSpeed + agility;
+end;
+
+-- When a player's data should be saved.
+function Schema:PlayerSaveData(player, data)
+	if (data["serverwhitelist"] and table.Count( data["serverwhitelist"] ) == 0) then
+		data["serverwhitelist"] = nil;
+	end;
+end;
+
+-- When a player's data should be restored.
+function Schema:PlayerRestoreData(player, data)
+	if (!data["serverwhitelist"]) then
+		data["serverwhitelist"] = {};
+	end;
+	
+	local serverWhitelistIdentity = Clockwork.config:Get("server_whitelist_identity"):Get();
+	
+	if (serverWhitelistIdentity != "") then
+		if (!data["serverwhitelist"][serverWhitelistIdentity]) then
+			player:Kick("You aren't whitelisted");
+		end;
+	end;
+end;
+
+-- Check if a player does have an flag.
+function Schema:PlayerDoesHaveFlag(player, flag)
+	if (!Clockwork.config:Get("permits"):Get()) then
+		if (flag == "z" or flag == "1") then
+			return false;
+		end;
+		
+		for k, v in pairs(self.customPermits) do
+			if (v.flag == flag) then
+				return false;
+			end;
+		end;
+	end;
+end;
+
+-- Called when a player attempts to delete a character.
+function Schema:PlayerCanDeleteCharacter(player, character)
+	if (character.data["permakilled"]) then
+		return true;
+	end;
+end;
+
+-- Called to check if a player does recognise another player.
+function Schema:PlayerDoesRecognisePlayer(player, target, status, isAccurate, realValue)
+	if (self:PlayerIsUSMilitary(target) then
+		return true;
+	end;
+end;
+
+-- Called when a player attempts to use a character.
+function Schema:PlayerCanUseCharacter(player, character)
+	if (character.data["permakilled"]) then
+		return character.name.." is permanently killed and cannot be used!";
+	end;
+end;
+
+-- Called when attempts to use a command.
+function Schema:PlayerCanUseCommand(player, commandTable, arguments)
+	if (player:GetSharedVar("tied") != 0) then
+		local blacklisted = {
+			"Radio",
+			"Broadcast",
+			"OrderShipment"
+		};
+		
+		if (table.HasValue(blacklisted, commandTable.name)) then
+			Clockwork.player:Notify(player, "You cannot use this command when you are tied!");
+			
+			return false;
+		end;
+	end;
+end;
+
+-- Called when a player attempts to use a door.
+function Schema:PlayerCanUseDoor(player, door)
+	if (player:GetSharedVar("tied") != 0 or (!self:PlayerIsUSMilitary(player) and player:GetFaction() != FACTION_USMILITARY)) then
+		return false;
+	end;
+end;
+
+-- Called when a player's character has unloaded.
+function Schema:PlayerCharacterUnloaded(player)
+	self:ResetPlayerScanner(player);
+end;
+
+-- Called when a player attempts to destroy an item.
+function Schema:PlayerCanDestroyItem(player, itemTable, noMessage)
+	if (player:GetSharedVar("tied") != 0) then
+		if (!noMessage) then
+			Clockwork.player:Notify(player, "You cannot destroy items when you are tied!");
+		end;
+		
+		return false;
+        end;
+end;
+
+function Schema:PlayerCanDropItem(player, itemTable, noMessage)
+	if (player:GetSharedVar("tied") != 0) then
+		if (!noMessage) then
+			Clockwork.player:Notify(player, "You cannot drop items when you are tied!");
+		end;
+		
+		return false;
+	end;
+end;
+
+-- Called when a player attempts to use an item.
+function Schema:PlayerCanUseItem(player, itemTable, noMessage)
+	if (player:GetSharedVar("tied") != 0) then
+		if (!noMessage) then
+			Clockwork.player:Notify(player, "You cannot use items when you are tied!");
+		end;
+		
+		return false;
+	end;
+	
+	if (Clockwork.item:IsWeapon(itemTable) and !itemTable:IsFakeWeapon()) then
+		local secondaryWeapon;
+		local primaryWeapon;
+		local sideWeapon;
+		local fault;
+		
+		for k, v in ipairs( player:GetWeapons() ) do
+			local weaponTable = Clockwork.item:GetByWeapon(v);
+			
+			if (weaponTable and !weaponTable:IsFakeWeapon()) then
+				if (weaponTable("weight") >= 1) then
+					if (weaponTable("weight") <= 2) then
+						secondaryWeapon = true;
+					else
+						primaryWeapon = true;
+					end;
+				else
+					sideWeapon = true;
+				end;
+			end;
+		end;
+		
+		if (itemTable("weight") >= 1) then
+			if (itemTable("weight") <= 2) then
+				if (secondaryWeapon) then
+					fault = "You cannot use another secondary weapon!";
+				end;
+			elseif (primaryWeapon) then
+				fault = "You cannot use another secondary weapon!";
+			end;
+		elseif (sideWeapon) then
+			fault = "You cannot use another melee weapon!";
+		end;
+		
+		if (fault) then
+			if (!noMessage) then
+				Clockwork.player:Notify(player, fault);
+			end;
+			
+			return false;
+		end;
+	end;
+end;
+
+-- Called before a player dies.
+function Schema:DoPlayerDeath(player, attacker, damageInfo)
+	local clothes = player:GetCharacterData("clothes");
+	
+	if (clothes) then
+		player:GiveItem(Clockwork.item:CreateInstance(clothes));
+		player:SetCharacterData("clothes", nil);
+	end;
+	
+	player.beingSearched = nil;
+	player.searching = nil;
+	
+	self:TiePlayer(player, false, true);
+end;
+
+-- Called when a player's character has loaded.
+function Schema:PlayerCharacterLoaded(player)
+	player:SetSharedVar("permaKilled", false);
+	player:SetSharedVar("tied", 0);
+end;
+
+-- Called when a player throws a punch.
+function Schema:PlayerPunchThrown(player)
+	player:ProgressAttribute(ATB_STRENGTH, 0.25, true);
+end;
+
+-- Called when a player spawns lightly.
+function Schema:PostPlayerLightSpawn(player, weapons, ammo, special)
+	local clothes = player:GetCharacterData("clothes");
+	
+	if (clothes) then
+		local itemTable = Clockwork.item:FindByID(clothes);
+		
+		if (itemTable) then
+			itemTable:OnChangeClothes(player, true);
+		end;
+	end;
+end;
+
+-- Called when a player's limb damage is healed.
+function Schema:PlayerLimbDamageHealed(player, hitGroup, amount)
+	if (hitGroup == HITGROUP_HEAD) then
+		player:BoostAttribute("Limb Damage", ATB_MEDICAL, false);
+	elseif (hitGroup == HITGROUP_CHEST or hitGroup == HITGROUP_STOMACH) then
+		player:BoostAttribute("Limb Damage", ATB_ENDURANCE, false);
+	elseif (hitGroup == HITGROUP_LEFTLEG or hitGroup == HITGROUP_RIGHTLEG) then
+		player:BoostAttribute("Limb Damage", ATB_ACROBATICS, false);
+		player:BoostAttribute("Limb Damage", ATB_AGILITY, false);
+	elseif (hitGroup == HITGROUP_LEFTARM or hitGroup == HITGROUP_RIGHTARM) then
+		player:BoostAttribute("Limb Damage", ATB_DEXTERITY, false);
+		player:BoostAttribute("Limb Damage", ATB_STRENGTH, false);
+	end;
+end;
+
+-- When a player's limb takes damage.
+function Schema:PlayerLimbTakeDamage(player, hitGroup, damage)
+	local limbDamage = Clockwork.limb:GetDamage(player, hitGroup);
+	
+	if (hitGroup == HITGROUP_HEAD) then
+		player:BoostAttribute("Limb Damage", ATB_MEDICAL, -limbDamage);
+	elseif (hitGroup == HITGROUP_CHEST or hitGroup == HITGROUP_STOMACH) then
+		player:BoostAttribute("Limb Damage", ATB_ENDURANCE, -limbDamage);
+	elseif (hitGroup == HITGROUP_LEFTLEG or hitGroup == HITGROUP_RIGHTLEG) then
+		player:BoostAttribute("Limb Damage", ATB_ACROBATICS, -limbDamage);
+		player:BoostAttribute("Limb Damage", ATB_AGILITY, -limbDamage);
+	elseif (hitGroup == HITGROUP_LEFTARM or hitGroup == HITGROUP_RIGHTARM) then
+		player:BoostAttribute("Limb Damage", ATB_DEXTERITY, -limbDamage);
+		player:BoostAttribute("Limb Damage", ATB_STRENGTH, -limbDamage);
+	end;
+end;
+
+-- TOO LAZY TO FUCKING TYPE XD FUNCTION TO SCALE DAMAGE BY HIT GROUP!
+function Schema:PlayerScaleDamageByHitGroup(player, attacker, hitGroup, damageInfo, baseDamage)
+	local endurance = Clockwork.attributes:Fraction(player, ATB_ENDURANCE, 0.75, 0.75);
+	local clothes = player:GetCharacterData("clothes");
+	
+	damageInfo:ScaleDamage(1.5 - endurance);
+	
+	if (damageInfo:IsBulletDamage()) then
+		if (clothes and damageInfo:IsBulletDamage()) then
+			local itemTable = Clockwork.item:FindByID(clothes);
+			
+			if (itemTable and itemTable.protection) then
+				damageInfo:ScaleDamage(1 - itemTable.protection);
+			end;
+		end;
+	end;
+end;
