@@ -3,7 +3,7 @@
 function Schema:GetCinematicIntroInfo()
 	return {
 		credits = "Designed and developed by "..self:GetAuthor()..".",
-		title = "Skeleton",
-		text = "An example schema for Clockwork."
+		title = "The Last of Us Roleplay",
+		text = "An Last of Us Roleplay Schema."
 	};
 end;
